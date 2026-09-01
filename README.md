@@ -35,7 +35,8 @@ Windows SmartScreen may warn about an unknown publisher (the build is not code-s
 | Cooldown | Minimum gap between two impulses. |
 | Bass from / to | Frequency band that is analysed. |
 | Send rate | How often commands go to the vest. If the vest keeps vibrating after you stop audio, choose a slower rate. |
-| EMS arm cuffs (optional) | Off by default. "On hits": strong single hits trigger the cuffs (threshold, min. gap). "Continuous": cuffs follow the bass level. Own strength sliders (100 % = the EMS strength set in the TrueGear Player). Read the warning in the app before enabling. |
+| EMS arm cuffs (optional) | Off by default. "On hits": strong single hits trigger the cuffs (threshold, min. gap). "Continuous": cuffs follow the bass level. Left/right cuff follow the audio. Own strength sliders (100 % = the EMS strength set in the TrueGear Player). Read the warning in the app before enabling. |
+| Surround | With a 5.1/7.1 playback device, front channels drive the front of the vest, rear/side channels the back, LFE everything. Stereo: left/right on front and back. |
 
 Profiles **impact**, **cinematic** and **balanced** are included; your own profiles are stored in `%LOCALAPPDATA%\AudioHaptics\profiles.json`. The app and its built-in **Help** are available in English and German (switch top right).
 
@@ -53,7 +54,7 @@ python audio_haptics_gui.py
 
 ## TrueGear protocol notes
 
-See [TRUEGEAR_PROTOKOLL.md](TRUEGEAR_PROTOKOLL.md). Short version: the TrueGear Player runs a local WebSocket server at `ws://127.0.0.1:18233/v1/tact/`; effects are sent as base64-encoded JSON with method `play_no_registered`. Motor indices: front 0–19, back 100–119 (4 columns × 5 rows, index = row·4 + column).
+See [TRUEGEAR_PROTOKOLL.md](TRUEGEAR_PROTOKOLL.md). Short version: the TrueGear Player runs a local WebSocket server at `ws://127.0.0.1:18233/v1/tact/`; effects are sent as base64-encoded JSON with method `play_no_registered`. Motor indices: front 0–19, back 100–119 (4 columns × 5 rows, index = row·4 + column). EMS cuffs: `action_type` "Electrical", index 0 = left cuff, 100 = right cuff.
 
 This implementation was written from scratch based on TrueGear's public documentation
 ([vr-commiter/How-to-connect-the-TrueGear-suit](https://github.com/vr-commiter/How-to-connect-the-TrueGear-suit)). No TrueGear code or SDK files are included.

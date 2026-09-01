@@ -57,6 +57,13 @@ Bestätigt am 01.09.2026 an der Weste: **vorne 0–19, hinten 100–119**, je 4 
 
 Praxis-Erkenntnis: Der Player verarbeitet Effekte nacheinander. Werden Pulse schneller gesendet, als sie dauern, staut sich eine Warteschlange (Weste vibriert nach). Pulsdauer daher immer kürzer als der Sendeabstand halten.
 
+## 4b. EMS-Armbänder (bestätigt 01.09.2026)
+
+- `action_type: "Electrical"`, `index`: **0 = linkes Band, 100 = rechtes Band** (per Test bestätigt).
+- Einzelreiz: `end_time: 0`, `once: "True"`. Dauerreiz: `end_time` = Dauer in ms, `once: "False"`, `interval` = Anzahl der Reize innerhalb der Dauer (im Player-Editor „Frequency (Total Times for Interval)“, Schalter „Single“ = once).
+- Die Intensität (0–100) ist relativ zur im TrueGear Player eingestellten EMS-Stärke – der Player-Wert ist der Referenzwert.
+- Westen- und EMS-Effekte können als getrennte Effekte parallel gesendet werden.
+
 ## 5. Latenz-Einschätzung
 
 - Lokaler WebSocket, keine Registrierung nötig, Impuls-Effekte mit `end_time` ≈ Pulsdauer → sehr geringer Overhead.
