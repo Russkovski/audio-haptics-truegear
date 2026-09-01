@@ -36,7 +36,7 @@ PROFILES = {
         gain=4.0, max_intensity=100,
         continuous=True, cont_intensity=35,
         min_intensity=20,
-        ems_enabled=False, ems_intensity=10, ems_threshold=0.7, ems_cooldown_ms=1000,
+        ems_enabled=False, ems_intensity=10, ems_threshold=0.35, ems_cooldown_ms=1000,
         ems_cont_enabled=False, ems_cont_intensity=10,
     ),
     # Wuchtige Explosionen + langes Grollen, Stärke folgt der Lautstärke.
@@ -48,7 +48,7 @@ PROFILES = {
         gain=4.0, max_intensity=100,
         continuous=True, cont_intensity=80,
         min_intensity=15,
-        ems_enabled=False, ems_intensity=10, ems_threshold=0.7, ems_cooldown_ms=1000,
+        ems_enabled=False, ems_intensity=10, ems_threshold=0.35, ems_cooldown_ms=1000,
         ems_cont_enabled=False, ems_cont_intensity=10,
     ),
     # Allround. Werte von Basti im Test am 01.09.2026 als beste Einstellung bestätigt.
@@ -60,7 +60,7 @@ PROFILES = {
         gain=2.0, max_intensity=90,
         continuous=True, cont_intensity=55,
         min_intensity=15,
-        ems_enabled=False, ems_intensity=10, ems_threshold=0.7, ems_cooldown_ms=1000,
+        ems_enabled=False, ems_intensity=10, ems_threshold=0.35, ems_cooldown_ms=1000,
         ems_cont_enabled=False, ems_cont_intensity=10,
     ),
 }
@@ -96,6 +96,9 @@ def channel_weights(n_ch):
 # ------------------------------------------------------- TrueGear-Anbindung
 TRUEGEAR_WS = "ws://127.0.0.1:18233/v1/tact/"
 EMS_MAX_INTENSITY = 100  # 100 % = die im TrueGear Player eingestellte EMS-Stärke (Player-Wert ist der Referenzwert)
+EMS_HIT_MS = 150         # Dauer eines Einzelreizes (wie im Player-Editor üblich: End 150, Single)
+EMS_CONT_MS = 400        # Blocklänge für Dauer-EMS; überlappende EMS-Befehle werden sonst verschluckt
+EMS_MIN_GAP = 0.20       # s  Mindestabstand zwischen zwei EMS-Befehlen (global)
 
 
 class TrueGear:
@@ -107,6 +110,7 @@ class TrueGear:
         self.q = queue.Queue(maxsize=8)
         self.last_send_ms = 0.0      # Dauer des letzten Sendens (nur Diagnose)
         self._last_connect_try = 0.0
+        self._last_ems_sent = 0.0
         self.connect()
         threading.Thread(target=self._worker, daemon=True).start()
 
@@ -124,10 +128,12 @@ class TrueGear:
         # Stereo-Kurzform: links/rechts auf vorne und hinten
         self.pulse4({"fl": left, "fr": right, "bl": left, "br": right}, duration_ms, core)
 
-    def pulse4(self, q: dict, duration_ms: int, core: bool = False):
+    def pulse4(self, q: dict, duration_ms: int, core: bool = False, ems=None):
         # Wird im Audio-Callback aufgerufen: nur einreihen, nicht senden.
+        # ems: optional (links, rechts, once) -> wird als zusätzliche Spuren IM SELBEN Effekt gesendet,
+        # weil der Player getrennte EMS-Effekte zwischen den Westen-Pulsen verschluckt.
         try:
-            self.q.put_nowait((dict(q), 0, duration_ms, core))
+            self.q.put_nowait((dict(q), ems, duration_ms, core))
         except queue.Full:
             pass  # lieber einen Impuls verwerfen als Verzögerung aufbauen
 
@@ -164,11 +170,13 @@ class TrueGear:
                 self._send_raw(json.dumps({"Method": "stop_all",
                                            "Body": base64.b64encode(b"{}").decode()}))
             if "vest" in latest:
-                q, _, dur, core = latest["vest"]
-                self._send(q, dur, core)
+                q, ems, dur, core = latest["vest"]
+                self._send(q, dur, core, ems)
             if "ems" in latest:
                 _, (l, r), dur, _ = latest["ems"]
-                self._send_ems(l, r, dur)
+                if time.time() - self._last_ems_sent >= EMS_MIN_GAP:
+                    self._send_ems(l, r, dur)
+                    self._last_ems_sent = time.time()
 
     def _drain(self):
         items = []
@@ -178,7 +186,7 @@ class TrueGear:
             except queue.Empty:
                 return items
 
-    def _send(self, q: dict, duration_ms: int, core: bool = False):
+    def _send(self, q: dict, duration_ms: int, core: bool = False, ems=None):
         # Ein Effekt mit bis zu vier Spuren (Quadranten); gleiche Stärke -> zusammengefasst.
         groups = QUADS_CORE if core else QUADS
         by_int = {}
@@ -194,6 +202,8 @@ class TrueGear:
                 "intensity_mode": "Const", "action_type": "Shake",
                 "once": "False", "interval": 0, "index": motors,
             })
+        if ems:
+            tracks += self._ems_tracks(ems[0], ems[1], 0 if ems[2] else duration_ms)
         if not tracks:
             return
         effect = {"name": "AudioHaptics", "uuid": str(uuidlib.uuid4()),
@@ -202,21 +212,29 @@ class TrueGear:
         msg = json.dumps({"Method": "play_no_registered", "Body": body})
         self._send_raw(msg)
 
-    def _send_ems(self, left: int, right: int, duration_ms: int = 0):
+    def _ems_tracks(self, left: int, right: int, duration_ms: int = 0):
         # Format laut offizieller Doku: action_type "Electrical", index 0/100 = die beiden Bänder.
-        # Einzelreiz: end_time 0 + once True. Dauerreiz: end_time = Dauer, once False,
-        # interval = Anzahl Reize innerhalb der Dauer (im Player "Frequency (Total Times for Interval)").
+        # Einzelreiz: once True (Dauer EMS_HIT_MS). Dauerreiz: once False, interval = Reize innerhalb der Dauer
+        # (im Player-Editor "Frequency (Total Times for Interval)").
         once = duration_ms <= 0
+        if once:
+            duration_ms = EMS_HIT_MS
         interval = 1 if once else max(1, int(duration_ms) // 15)
+        cap = lambda v: max(0, min(int(v), EMS_MAX_INTENSITY))
         by_int = {}
-        for idx, inten in ((EMS_LEFT, left), (EMS_RIGHT, right)):
+        for idx, inten in ((EMS_LEFT, cap(left)), (EMS_RIGHT, cap(right))):
             if inten > 0:
-                by_int.setdefault(int(inten), []).append(idx)
-        tracks = [{"start_time": 0, "end_time": int(duration_ms), "stop_name": "",
-                   "start_intensity": inten, "end_intensity": inten,
-                   "intensity_mode": "Const", "action_type": "Electrical",
-                   "once": "True" if once else "False", "interval": interval, "index": idxs}
-                  for inten, idxs in by_int.items()]
+                by_int.setdefault(inten, []).append(idx)
+        return [{"start_time": 0, "end_time": int(duration_ms), "stop_name": "",
+                 "start_intensity": inten, "end_intensity": inten,
+                 "intensity_mode": "Const", "action_type": "Electrical",
+                 "once": "True" if once else "False", "interval": interval, "index": idxs}
+                for inten, idxs in by_int.items()]
+
+    def _send_ems(self, left: int, right: int, duration_ms: int = 0):
+        tracks = self._ems_tracks(left, right, duration_ms)
+        if not tracks:
+            return
         effect = {"name": "AudioHapticsEMS", "uuid": str(uuidlib.uuid4()), "keep": "False", "priority": 0,
                   "tracks": tracks}
         body = base64.b64encode(json.dumps(effect).encode()).decode()
@@ -263,6 +281,8 @@ class BassEngine:
         self.last_ems = 0.0
         self.ems_fired = 0.0   # Zeitpunkt des letzten EMS-Impulses (GUI-Anzeige)
         self.ems_lr = (0.0, 0.0)  # Seitenanteil des letzten EMS (GUI)
+        self.last_ems_cont = 0.0
+        self.peak = 0.0        # Spitzenwert des rohen Bass-Pegels (langsam abfallend) für die Anzeige
 
     def set_profile(self, p: dict):
         self.p = p
@@ -283,6 +303,7 @@ class BassEngine:
             y, self.zi[c] = sosfilt(self.sos, block[:, c], zi=self.zi[c])
             rms_ch.append(float(np.sqrt(np.mean(y * y))))
         rms = max(rms_ch)
+        self.peak = rms if rms > self.peak else self.peak - self._coef(1500, n) * self.peak
 
         # Räumliche Verteilung: Kanäle -> vier Quadranten (Stereo, 5.1, 7.1)
         qe = {"fl": 0.0, "fr": 0.0, "bl": 0.0, "br": 0.0}
@@ -304,8 +325,10 @@ class BassEngine:
 
         now = time.time()
         level = 0.0
+        level_u = 0.0   # ungedeckelt: 1.0 = Balken voll, 2.0 = doppelt so laut (für die EMS-Schwelle)
         if self.env > p["gate"]:
-            level = min(1.0, (self.env - p["gate"]) * p["gain"])
+            level_u = (self.env - p["gate"]) * p["gain"]
+            level = min(1.0, level_u)
 
         out_int = 0
         # Transient: schneller Sprung über langsame Referenz + Cooldown
@@ -316,17 +339,18 @@ class BassEngine:
             inten = int(p["min_intensity"] + level * (p["max_intensity"] - p["min_intensity"]))
             dur = int(p["pulse_ms"] * (0.6 + 0.8 * level))
             q = {k: int(inten * scale[k]) for k in qe}
-            tg.pulse4(q, dur)
-            self.last_q = (q, False, now)
-            self.last_pulse = now
-            # EMS: nur bei kräftigen Einzelschlägen, nie bei Dauerbass, mit eigenem Mindestabstand
-            if (p.get("ems_enabled") and level >= p.get("ems_threshold", 0.7)
+            # EMS bei Schlägen: als Spur im selben Effekt, mit eigenem Mindestabstand
+            ems = None
+            if (p.get("ems_enabled") and rms >= p.get("ems_threshold", 0.35)
                     and (now - self.last_ems) * 1000 >= p.get("ems_cooldown_ms", 1000)):
                 e = p.get("ems_intensity", 10)
-                tg.ems(e, left=e * ems_l, right=e * ems_r)
+                ems = (e * ems_l, e * ems_r, True)
                 self.ems_lr = (ems_l, ems_r)
                 self.last_ems = now
                 self.ems_fired = now
+            tg.pulse4(q, dur, ems=ems)
+            self.last_q = (q, False, now)
+            self.last_pulse = now
             # nächster Dauerpuls erst, wenn dieser Impuls fertig ist (kein Rückstau)
             self.last_cont = now + dur / 1000.0 - cont_interval()
             self.active = True
@@ -339,16 +363,17 @@ class BassEngine:
             inten = int(level * p["cont_intensity"])
             if inten >= 5:
                 q = {k: int(inten * scale[k]) for k in qe}
-                tg.pulse4(q, cont_pulse_ms(), core=True)
-                self.last_q = (q, True, now)
-                self.active = True
-                # Dauer-EMS: folgt wie der Dauerbass der Lautstärke, kein Mindestabstand
+                # Dauer-EMS: als Spur im selben Puls, folgt wie der Dauerbass der Lautstärke
+                ems = None
                 if p.get("ems_cont_enabled"):
                     e = int(level * p.get("ems_cont_intensity", 10))
                     if e >= 3:
-                        tg.ems(e, cont_pulse_ms(), left=e * ems_l, right=e * ems_r)
+                        ems = (e * ems_l, e * ems_r, False)
                         self.ems_lr = (ems_l, ems_r)
                         self.ems_fired = now
+                tg.pulse4(q, cont_pulse_ms(), core=True, ems=ems)
+                self.last_q = (q, True, now)
+                self.active = True
             self.last_cont = now
             self.last_level = level
             out_int = inten

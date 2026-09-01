@@ -62,7 +62,8 @@ Praxis-Erkenntnis: Der Player verarbeitet Effekte nacheinander. Werden Pulse sch
 - `action_type: "Electrical"`, `index`: **0 = linkes Band, 100 = rechtes Band** (per Test bestätigt).
 - Einzelreiz: `end_time: 0`, `once: "True"`. Dauerreiz: `end_time` = Dauer in ms, `once: "False"`, `interval` = Anzahl der Reize innerhalb der Dauer (im Player-Editor „Frequency (Total Times for Interval)“, Schalter „Single“ = once).
 - Die Intensität (0–100) ist relativ zur im TrueGear Player eingestellten EMS-Stärke – der Player-Wert ist der Referenzwert.
-- Westen- und EMS-Effekte können als getrennte Effekte parallel gesendet werden.
+- **Wichtig:** Werden EMS-Effekte als eigene Effekte zwischen schnellen Westen-Pulsen gesendet, verschluckt der Player einen Großteil davon. Zuverlässig ist nur, Shake- und Electrical-Spuren **im selben Effekt** (ein `play_no_registered`) zu senden.
+- Einzelreiz funktioniert zuverlässig mit `end_time: 150` + `once: "True"` (wie im Player-Editor).
 
 ## 5. Latenz-Einschätzung
 

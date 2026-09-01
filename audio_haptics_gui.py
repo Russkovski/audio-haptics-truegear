@@ -46,7 +46,7 @@ SLIDERS = [
 EMS_SLIDERS = [
     ("ems_intensity",   0,    100,  1),
     ("ems_cont_intensity", 0, 100,  1),
-    ("ems_threshold",   0.3,  1.0,  0.05),  # Pegel (0–1), ab dem ein Schlag EMS auslöst
+    ("ems_threshold",   0.0,  1.0,  0.005), # roher Bass-Pegel, gleiche Skala wie "Schwelle"
     ("ems_cooldown_ms", 500,  5000, 100),
 ]
 UNITS = {"ems_cooldown_ms": "ms", "attack_ms": "ms", "release_ms": "ms", "cooldown_ms": "ms", "low_hz": "Hz", "high_hz": "Hz"}
@@ -114,7 +114,7 @@ STR = {
         "start": "Start", "stop": "Stop", "test": "Test vibration", "test_ems": "Test EMS (20)", "cuff": "EMS",
         "device": "Audio device", "reload": "Reload", "profile": "Profile", "save": "Save", "new": "New…",
         "rate": "Send rate", "cont": "Continuous bass", "params": "Parameters", "live": "Live",
-        "bass": "Bass level", "haptic": "Haptic strength", "impulse": "Impulse",
+        "bass": "Bass level", "haptic": "Haptic strength", "peak": "Peak (raw)", "impulse": "Impulse",
         "ready": "Ready.", "stopped": "Stopped.", "running": "Running: {dev} · {rate} Hz · {ch} ch",
         "saved": "Profile “{name}” saved.", "created": "Profile “{name}” created.",
         "new_title": "New profile", "new_prompt": "Name for the new profile:",
@@ -138,7 +138,7 @@ STR = {
         "start": "Start", "stop": "Stop", "test": "Test-Vibration", "test_ems": "Test EMS (20)", "cuff": "EMS",
         "device": "Audio-Gerät", "reload": "Neu laden", "profile": "Profil", "save": "Speichern", "new": "Neu…",
         "rate": "Sendetakt", "cont": "Dauerbass", "params": "Parameter", "live": "Live",
-        "bass": "Bass-Pegel", "haptic": "Haptik-Stärke", "impulse": "Impuls",
+        "bass": "Bass-Pegel", "haptic": "Haptik-Stärke", "peak": "Peak (roh)", "impulse": "Impuls",
         "ready": "Bereit.", "stopped": "Gestoppt.", "running": "Läuft: {dev} · {rate} Hz · {ch} Kanäle",
         "saved": "Profil „{name}“ gespeichert.", "created": "Profil „{name}“ angelegt.",
         "new_title": "Neues Profil", "new_prompt": "Name für das neue Profil:",
@@ -192,7 +192,7 @@ HELP = {
             ("What it does", "Optional. “EMS on hits”: strong single bass hits (explosions, big shots) trigger the cuffs, controlled by EMS threshold and min. gap. "
              "“EMS continuous”: the cuffs follow the bass level like the vest does, using the “EMS continuous” slider – no min. gap applies."),
             ("Safety", "Off by default. Start at strength 10 and raise slowly; 100 % in the app equals the EMS strength you set in the TrueGear Player – the Player value is the base level. "
-             "EMS threshold = how loud a hit must be (higher = rarer). EMS min. gap = minimum time between two shocks."),
+             "EMS threshold = raw bass level a hit must reach, same scale as “Threshold” – the “Peak” value in the Live panel shows what your explosions actually reach. EMS min. gap = minimum time between two shocks."),
             ("", "Do not use EMS with a pacemaker, heart condition, epilepsy or during pregnancy. Use at your own risk."),
         ],
         "Tips": [
@@ -236,7 +236,7 @@ HELP = {
             ("Was es macht", "Optional. „EMS bei Schlägen“: kräftige einzelne Bass-Schläge (Explosionen, große Schüsse) lösen die Bänder aus, geregelt über EMS-Schwelle und EMS-Abstand. "
              "„EMS dauerhaft“: die Bänder folgen wie die Weste dem Bass-Pegel, Stärke über „EMS dauerhaft“ – ohne Mindestabstand."),
             ("Sicherheit", "Standardmäßig aus. Bei Stärke 10 anfangen und langsam steigern; 100 % in der App entsprechen der im TrueGear Player eingestellten EMS-Stärke – der Player-Wert ist der Grundwert. "
-             "EMS-Schwelle = wie laut ein Schlag sein muss (höher = seltener). EMS-Abstand = Mindestzeit zwischen zwei Reizen."),
+             "EMS-Schwelle = roher Bass-Pegel, den ein Schlag erreichen muss, gleiche Skala wie „Schwelle“ – der Wert „Peak“ im Live-Bereich zeigt, was deine Explosionen tatsächlich erreichen. EMS-Abstand = Mindestzeit zwischen zwei Reizen."),
             ("", "EMS nicht verwenden bei Herzschrittmacher, Herzerkrankungen, Epilepsie oder Schwangerschaft. Nutzung auf eigene Gefahr."),
         ],
         "Tipps": [
@@ -445,6 +445,8 @@ class App(ctk.CTk):
             bar = ctk.CTkProgressBar(live, width=300, height=10, progress_color=EMBER, fg_color=LINE)
             bar.set(0); bar.pack(anchor="w", padx=14, pady=(2, 10))
             setattr(self, attr, bar)
+        self.lbl_peak = ctk.CTkLabel(live, text=self.T("peak") + ": 0.000", font=(FONT, 12), text_color=MUTED)
+        self.lbl_peak.pack(anchor="w", padx=14, pady=(0, 4))
         self.lbl_hit = ctk.CTkLabel(live, text=" ", font=(FONT, 12, "bold"), text_color=EMBER)
         self.lbl_hit.pack(anchor="w", padx=14, pady=(0, 12))
 
@@ -457,7 +459,7 @@ class App(ctk.CTk):
         if key == "gate":
             return f"{v:.3f}"
         if key == "ems_threshold":
-            return f"{v:.2f}"
+            return f"{v:.3f}"
         if key == "gain":
             return f"{v:.1f}"
         return f"{int(v)} {UNITS.get(key, '')}".strip()
@@ -664,6 +666,7 @@ class App(ctk.CTk):
             gl = max(gl, f * self.engine.ems_lr[0]); gr = max(gr, f * self.engine.ems_lr[1])
         self.vest.show_ems(gl, gr)
         if self.engine:
+            self.lbl_peak.configure(text=f"{self.T('peak')}: {self.engine.peak:.3f}")
             q, core, t = self.engine.last_q
             age = time.time() - t
             fade = max(0.0, 1.0 - age / 0.18)           # Glühen klingt in 180 ms ab
