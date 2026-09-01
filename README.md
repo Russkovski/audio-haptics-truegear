@@ -36,7 +36,7 @@ Windows SmartScreen may warn about an unknown publisher (the build is not code-s
 | Bass from / to | Frequency band that is analysed. |
 | Send rate | How often commands go to the vest. If the vest keeps vibrating after you stop audio, choose a slower rate. |
 
-Profiles **impact**, **cinematic** and **balanced** are included; your own profiles are stored in `%LOCALAPPDATA%\AudioHaptics\profiles.json`. The **Help** button in the app explains everything in detail (German).
+Profiles **impact**, **cinematic** and **balanced** are included; your own profiles are stored in `%LOCALAPPDATA%\AudioHaptics\profiles.json`. The app and its built-in **Help** are available in English and German (switch top right).
 
 Some delay between sound and vibration is normal. It comes from the TrueGear Player and the wireless link to the vest, not from this app.
 

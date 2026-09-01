@@ -8,7 +8,7 @@
 AppId={{7E2B9C4A-5D1F-4B7E-9A3C-AUDIOHAPTICS1}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=Community-Projekt (nicht von TrueGear)
+AppPublisher=Community project (not affiliated with TrueGear)
 DefaultDirName={autopf}\AudioHaptics
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
@@ -25,10 +25,11 @@ PrivilegesRequiredOverridesAllowed=dialog
 UninstallDisplayName={#AppName}
 
 [Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Verknüpfung auf dem Desktop erstellen"; GroupDescription: "Zusätzliche Aufgaben:"
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
 Source: "dist\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
@@ -38,7 +39,8 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "{#AppName} jetzt starten"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [Messages]
-WelcomeLabel2=Dieses Programm macht den Bass aus Spielen, Videos und Musik auf der TrueGear ME02 spürbar.%n%nWichtig: Der TrueGear Player muss installiert sein und laufen.%n%nEs wird [name/ver] auf deinem Computer installiert.
+english.WelcomeLabel2=This program turns the bass of games, videos and music into vibration on the TrueGear ME02.%n%nImportant: the TrueGear Player must be installed and running.%n%nThis will install [name/ver] on your computer.
+german.WelcomeLabel2=Dieses Programm macht den Bass aus Spielen, Videos und Musik auf der TrueGear ME02 spürbar.%n%nWichtig: Der TrueGear Player muss installiert sein und laufen.%n%nEs wird [name/ver] auf deinem Computer installiert.
