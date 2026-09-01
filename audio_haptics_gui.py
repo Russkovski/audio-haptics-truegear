@@ -43,7 +43,13 @@ SLIDERS = [
     ("low_hz",         "Bass von",          15,   80,   5),
     ("high_hz",        "Bass bis",          60,   250,  5),
 ]
-UNITS = {"attack_ms": "ms", "release_ms": "ms", "cooldown_ms": "ms", "low_hz": "Hz", "high_hz": "Hz"}
+EMS_SLIDERS = [
+    ("ems_intensity",   0,    100,  1),
+    ("ems_cont_intensity", 0, 100,  1),
+    ("ems_threshold",   0.3,  1.0,  0.05),  # Pegel (0–1), ab dem ein Schlag EMS auslöst
+    ("ems_cooldown_ms", 500,  5000, 100),
+]
+UNITS = {"ems_cooldown_ms": "ms", "attack_ms": "ms", "release_ms": "ms", "cooldown_ms": "ms", "low_hz": "Hz", "high_hz": "Hz"}
 
 
 def lerp_color(a, b, t):
@@ -58,12 +64,19 @@ class VestMap(tk.Canvas):
 
     CELL, GAP = 26, 6
 
-    def __init__(self, master, front="Front", back="Back"):
-        w = 2 * (4 * (self.CELL + self.GAP)) + 70
+    def __init__(self, master, front="Front", back="Back", cuff="EMS"):
+        self.OFF = 34  # Platz links/rechts für die EMS-Bänder
+        w = 2 * (4 * (self.CELL + self.GAP)) + 70 + 2 * self.OFF
         h = 5 * (self.CELL + self.GAP) + 44
         super().__init__(master, width=w, height=h, bg=PANEL, highlightthickness=0)
         self.cells = {}
-        for side, x0, title in (("front", 20, front), ("back", 20 + 4 * (self.CELL + self.GAP) + 40, back)):
+        # EMS-Armbänder: schmale Balken links und rechts neben der Weste
+        self.cuffs = []
+        cy0, cy1 = 30 + 1 * (self.CELL + self.GAP), 30 + 3 * (self.CELL + self.GAP) - self.GAP
+        for x in (8, w - 8 - 14):
+            self.cuffs.append(self.create_rectangle(x, cy0, x + 14, cy1, fill=LINE, outline=""))
+            self.create_text(x + 7, cy1 + 12, text=cuff, fill=MUTED, font=(FONT, 8))
+        for side, x0, title in (("front", 20 + self.OFF, front), ("back", 20 + self.OFF + 4 * (self.CELL + self.GAP) + 40, back)):
             self.create_text(x0 + 2 * (self.CELL + self.GAP) - self.GAP / 2, 14, text=title,
                              fill=MUTED, font=(FONT, 11))
             for r in range(5):
@@ -73,15 +86,21 @@ class VestMap(tk.Canvas):
                     self.cells[(side, r, c)] = self.create_rectangle(
                         x, y, x + self.CELL, y + self.CELL, fill=LINE, outline="")
         # kleine Hilfe: L/R aus Trägersicht
-        self.create_text(12, h - 10, text="L", fill=MUTED, font=(FONT, 9))
-        self.create_text(20 + 4 * (self.CELL + self.GAP) - 8, h - 10, text="R", fill=MUTED, font=(FONT, 9))
+        self.create_text(12 + self.OFF, h - 10, text="L", fill=MUTED, font=(FONT, 9))
+        self.create_text(20 + self.OFF + 4 * (self.CELL + self.GAP) - 8, h - 10, text="R", fill=MUTED, font=(FONT, 9))
 
-    def show(self, left, right, core_only):
+    def show_ems(self, t_left, t_right):
+        self.itemconfig(self.cuffs[0], fill=lerp_color(LINE, EMBER, t_left))
+        self.itemconfig(self.cuffs[1], fill=lerp_color(LINE, EMBER, t_right))
+
+    def show(self, q, core_only, fade=1.0):
+        # q: {"fl","fr","bl","br"} 0..100
         for (side, r, c), item in self.cells.items():
             if core_only and r >= 3:
                 t = 0.0
             else:
-                t = (left if c < 2 else right) / 100.0
+                k = ("f" if side == "front" else "b") + ("l" if c < 2 else "r")
+                t = q.get(k, 0) * fade / 100.0
             self.itemconfig(item, fill=lerp_color(LINE, EMBER, t))
 
 
@@ -92,7 +111,7 @@ STR = {
     "en": {
         "subtitle": "TrueGear ME02 · unofficial", "help": "Help",
         "conn_no": "● Player not connected", "conn_ok": "● Player connected", "conn_lost": "● Player not reachable",
-        "start": "Start", "stop": "Stop", "test": "Test vibration",
+        "start": "Start", "stop": "Stop", "test": "Test vibration", "test_ems": "Test EMS (20)", "cuff": "EMS",
         "device": "Audio device", "reload": "Reload", "profile": "Profile", "save": "Save", "new": "New…",
         "rate": "Send rate", "cont": "Continuous bass", "params": "Parameters", "live": "Live",
         "bass": "Bass level", "haptic": "Haptic strength", "impulse": "Impulse",
@@ -101,16 +120,22 @@ STR = {
         "new_title": "New profile", "new_prompt": "Name for the new profile:",
         "no_dev_title": "No device", "no_dev": "No WASAPI loopback device found.",
         "audio_err": "Audio error", "front": "Front", "back": "Back",
+        "ems": "EMS arm cuffs", "ems_on": "EMS on hits", "ems_cont_on": "EMS continuous", "ems_hint": "100 % = the EMS strength set in the TrueGear Player; adjust the base level there. On hits: strong single bass hits, with threshold and min. gap. Continuous: follows the bass level like the vest.",
+        "ems_warn_title": "Enable EMS?",
+        "ems_warn": "The EMS cuffs deliver real electrical stimulation. Start low (10), raise slowly, and stop if it feels uncomfortable. "
+                    "Do not use if you have a pacemaker, heart condition, epilepsy or are pregnant. Enable at your own risk.",
+        "ems_fired": "EMS",
         "help_title": "How to use Audio Haptics",
         "help_sub": "Feel the bass of any game – through the TrueGear Player.",
         "sl": {"gate": "Threshold", "gain": "Gain", "max_intensity": "Impulse strength",
                "cont_intensity": "Continuous strength", "attack_ms": "Attack", "release_ms": "Release",
-               "cooldown_ms": "Cooldown", "low_hz": "Bass from", "high_hz": "Bass to"},
+               "cooldown_ms": "Cooldown", "low_hz": "Bass from", "high_hz": "Bass to",
+               "ems_intensity": "EMS strength", "ems_cont_intensity": "EMS continuous", "ems_threshold": "EMS threshold", "ems_cooldown_ms": "EMS min. gap"},
     },
     "de": {
         "subtitle": "TrueGear ME02 · inoffiziell", "help": "Hilfe",
         "conn_no": "● Player nicht verbunden", "conn_ok": "● Player verbunden", "conn_lost": "● Player nicht erreichbar",
-        "start": "Start", "stop": "Stop", "test": "Test-Vibration",
+        "start": "Start", "stop": "Stop", "test": "Test-Vibration", "test_ems": "Test EMS (20)", "cuff": "EMS",
         "device": "Audio-Gerät", "reload": "Neu laden", "profile": "Profil", "save": "Speichern", "new": "Neu…",
         "rate": "Sendetakt", "cont": "Dauerbass", "params": "Parameter", "live": "Live",
         "bass": "Bass-Pegel", "haptic": "Haptik-Stärke", "impulse": "Impuls",
@@ -119,11 +144,17 @@ STR = {
         "new_title": "Neues Profil", "new_prompt": "Name für das neue Profil:",
         "no_dev_title": "Kein Gerät", "no_dev": "Kein WASAPI-Loopback-Gerät gefunden.",
         "audio_err": "Audio-Fehler", "front": "Vorne", "back": "Hinten",
+        "ems": "EMS-Armbänder", "ems_on": "EMS bei Schlägen", "ems_cont_on": "EMS dauerhaft", "ems_hint": "100 % = die im TrueGear Player eingestellte EMS-Stärke; den Grundwert dort einstellen. Bei Schlägen: kräftige Einzelschläge, mit Schwelle und Abstand. Dauerhaft: folgt wie die Weste dem Bass-Pegel.",
+        "ems_warn_title": "EMS einschalten?",
+        "ems_warn": "Die EMS-Bänder geben echte elektrische Reize ab. Niedrig anfangen (10), langsam steigern, bei Unbehagen sofort abschalten. "
+                    "Nicht verwenden bei Herzschrittmacher, Herzerkrankungen, Epilepsie oder Schwangerschaft. Nutzung auf eigene Gefahr.",
+        "ems_fired": "EMS",
         "help_title": "So benutzt du Audio Haptics",
         "help_sub": "Bass aus jedem Spiel spürbar machen – über den TrueGear Player.",
         "sl": {"gate": "Schwelle", "gain": "Gain", "max_intensity": "Stärke Impuls",
                "cont_intensity": "Stärke Dauerbass", "attack_ms": "Attack", "release_ms": "Release",
-               "cooldown_ms": "Cooldown", "low_hz": "Bass von", "high_hz": "Bass bis"},
+               "cooldown_ms": "Cooldown", "low_hz": "Bass von", "high_hz": "Bass bis",
+               "ems_intensity": "EMS-Stärke", "ems_cont_intensity": "EMS dauerhaft", "ems_threshold": "EMS-Schwelle", "ems_cooldown_ms": "EMS-Abstand"},
     },
 }
 
@@ -157,8 +188,15 @@ HELP = {
             ("Cooldown", "Minimum gap between two impulses; prevents machine-gun vibration on fast bass sequences."),
             ("Bass from / to", "Frequency band that is analysed. 20–120 Hz is sub-bass and bass. Raise “to” if gunshots trigger too little."),
         ],
+        "EMS cuffs": [
+            ("What it does", "Optional. “EMS on hits”: strong single bass hits (explosions, big shots) trigger the cuffs, controlled by EMS threshold and min. gap. "
+             "“EMS continuous”: the cuffs follow the bass level like the vest does, using the “EMS continuous” slider – no min. gap applies."),
+            ("Safety", "Off by default. Start at strength 10 and raise slowly; 100 % in the app equals the EMS strength you set in the TrueGear Player – the Player value is the base level. "
+             "EMS threshold = how loud a hit must be (higher = rarer). EMS min. gap = minimum time between two shocks."),
+            ("", "Do not use EMS with a pacemaker, heart condition, epilepsy or during pregnancy. Use at your own risk."),
+        ],
         "Tips": [
-            ("Vest map", "Shows live which motors are driven – left/right from the stereo image, front and back."),
+            ("Vest map", "Shows live which motors are driven. Stereo: left/right on front and back. 5.1/7.1: front channels drive the front, rear/side channels the back, LFE everything – set your Windows playback device to 5.1/7.1 to use it."),
             ("Delay", "A small offset between sound and vibration is normal. It comes from the TrueGear Player and the wireless "
              "link to the vest, not from this app. Placing the adapter freely on the desk helps."),
             ("Starting point", "Profile “balanced” is a good start. Too much vibration: raise the threshold. Too little: raise gain or set “Bass to” to 150 Hz."),
@@ -194,8 +232,15 @@ HELP = {
             ("Cooldown", "Mindestabstand zwischen zwei Impulsen, verhindert Dauerfeuer bei schnellen Bass-Folgen."),
             ("Bass von / bis", "Ausgewerteter Frequenzbereich. 20–120 Hz sind Subbass und Bass. „Bis“ höher setzen, wenn Schüsse zu wenig auslösen."),
         ],
+        "EMS-Bänder": [
+            ("Was es macht", "Optional. „EMS bei Schlägen“: kräftige einzelne Bass-Schläge (Explosionen, große Schüsse) lösen die Bänder aus, geregelt über EMS-Schwelle und EMS-Abstand. "
+             "„EMS dauerhaft“: die Bänder folgen wie die Weste dem Bass-Pegel, Stärke über „EMS dauerhaft“ – ohne Mindestabstand."),
+            ("Sicherheit", "Standardmäßig aus. Bei Stärke 10 anfangen und langsam steigern; 100 % in der App entsprechen der im TrueGear Player eingestellten EMS-Stärke – der Player-Wert ist der Grundwert. "
+             "EMS-Schwelle = wie laut ein Schlag sein muss (höher = seltener). EMS-Abstand = Mindestzeit zwischen zwei Reizen."),
+            ("", "EMS nicht verwenden bei Herzschrittmacher, Herzerkrankungen, Epilepsie oder Schwangerschaft. Nutzung auf eigene Gefahr."),
+        ],
         "Tipps": [
-            ("Westenkarte", "Zeigt live, welche Motoren angesteuert werden – links/rechts nach Stereo-Bild, vorne und hinten."),
+            ("Westenkarte", "Zeigt live, welche Motoren angesteuert werden. Stereo: links/rechts auf vorne und hinten. 5.1/7.1: Front-Kanäle steuern vorne, Rear/Side-Kanäle hinten, LFE alles – dafür das Windows-Wiedergabegerät auf 5.1/7.1 stellen."),
             ("Verzögerung", "Ein kleiner Versatz zwischen Ton und Vibration ist normal. Er entsteht im TrueGear Player "
              "und auf der Funkstrecke zur Weste, nicht in dieser App. Adapter frei auf den Tisch legen hilft."),
             ("Startpunkt", "Profil „balanced“ ist ein guter Anfang. Zu viel Vibration: Schwelle hoch. Zu wenig: Gain hoch oder „Bass bis“ auf 150 Hz."),
@@ -312,6 +357,8 @@ class App(ctk.CTk):
         self.btn_start.pack(side="left")
         ctk.CTkButton(row, text=self.T("test"), width=130, height=40, corner_radius=10, font=(FONT, 13),
                       fg_color=LINE, hover_color="#374158", text_color=TEXT, command=self._test).pack(side="left", padx=10)
+        ctk.CTkButton(row, text=self.T("test_ems"), width=120, height=40, corner_radius=10, font=(FONT, 13),
+                      fg_color=LINE, hover_color="#374158", text_color=TEXT, command=self._test_ems).pack(side="left")
 
         grid = ctk.CTkFrame(ctrl, fg_color="transparent"); grid.pack(fill="x", padx=14, pady=(0, 14))
         ctk.CTkLabel(grid, text=self.T("device"), font=(FONT, 12), text_color=MUTED).grid(row=0, column=0, sticky="w")
@@ -361,12 +408,37 @@ class App(ctk.CTk):
             var.trace_add("write", lambda *a, k=key: self.val_labels[k].configure(text=self._fmt(k)))
         ctk.CTkLabel(sl, text="", height=4).grid(row=len(SLIDERS) + 1, column=0)
 
+        # EMS-Armbänder
+        em = self._panel(left); em.pack(fill="x", pady=(12, 0))
+        top = ctk.CTkFrame(em, fg_color="transparent"); top.grid(row=0, column=0, columnspan=3, sticky="ew", padx=14, pady=(12, 2))
+        ctk.CTkLabel(top, text=self.T("ems"), font=(FONT, 13, "bold"), text_color=TEXT).pack(side="left")
+        self.var_ems = tk.BooleanVar(value=bool(self.prof.get("ems_enabled", False)))
+        self.var_ems_cont = tk.BooleanVar(value=bool(self.prof.get("ems_cont_enabled", False)))
+        ctk.CTkSwitch(top, text=self.T("ems_cont_on"), variable=self.var_ems_cont, progress_color=EMBER,
+                      font=(FONT, 12), text_color=TEXT, command=lambda: self._ems_toggled(self.var_ems_cont)).pack(side="right")
+        ctk.CTkSwitch(top, text=self.T("ems_on"), variable=self.var_ems, progress_color=EMBER,
+                      font=(FONT, 12), text_color=TEXT, command=lambda: self._ems_toggled(self.var_ems)).pack(side="right", padx=(0, 14))
+        ctk.CTkLabel(em, text=self.T("ems_hint"), font=(FONT, 11), text_color=MUTED, wraplength=420,
+                     justify="left").grid(row=1, column=0, columnspan=3, sticky="w", padx=14, pady=(0, 4))
+        for i, (key, lo, hi, step) in enumerate(EMS_SLIDERS, start=2):
+            ctk.CTkLabel(em, text=STR[self.lang]["sl"][key], width=120, anchor="w", font=(FONT, 12), text_color=MUTED).grid(row=i, column=0, sticky="w", padx=(14, 4), pady=3)
+            var = tk.DoubleVar(); self.vars[key] = var
+            ctk.CTkSlider(em, from_=lo, to=hi, variable=var, width=240, progress_color=EMBER,
+                          button_color=EMBER, button_hover_color=EMBER_D, fg_color=LINE,
+                          number_of_steps=int(round((hi - lo) / step)),
+                          command=lambda v, k=key: self._sliders_changed()).grid(row=i, column=1, padx=4, pady=3)
+            lab = ctk.CTkLabel(em, text="", width=70, anchor="e", font=(FONT, 12), text_color=TEXT)
+            lab.grid(row=i, column=2, padx=(4, 14), pady=3)
+            self.val_labels[key] = lab
+            var.trace_add("write", lambda *a, k=key: self.val_labels[k].configure(text=self._fmt(k)))
+        ctk.CTkLabel(em, text="", height=4).grid(row=len(EMS_SLIDERS) + 2, column=0)
+
         # Rechte Spalte: Echtzeit
         right = ctk.CTkFrame(self, fg_color="transparent")
         right.grid(row=1, column=1, sticky="n", padx=(10, 20), pady=(0, 20))
         live = self._panel(right); live.pack(fill="x")
         ctk.CTkLabel(live, text=self.T("live"), font=(FONT, 13, "bold"), text_color=TEXT).pack(anchor="w", padx=14, pady=(12, 6))
-        self.vest = VestMap(live, self.T("front"), self.T("back")); self.vest.pack(padx=14, pady=(0, 10))
+        self.vest = VestMap(live, self.T("front"), self.T("back"), self.T("cuff")); self.vest.pack(padx=14, pady=(0, 10))
 
         for name, attr in ((self.T("bass"), "pb_bass"), (self.T("haptic"), "pb_hap")):
             ctk.CTkLabel(live, text=name, font=(FONT, 12), text_color=MUTED).pack(anchor="w", padx=14)
@@ -384,15 +456,19 @@ class App(ctk.CTk):
         v = self.vars[key].get()
         if key == "gate":
             return f"{v:.3f}"
+        if key == "ems_threshold":
+            return f"{v:.2f}"
         if key == "gain":
             return f"{v:.1f}"
         return f"{int(v)} {UNITS.get(key, '')}".strip()
 
     def _sliders_changed(self):
         old = (self.prof["low_hz"], self.prof["high_hz"])
-        for key, *_ in SLIDERS:
+        for key, *_ in SLIDERS + [(k,) for k, *_ in EMS_SLIDERS]:
             v = self.vars[key].get()
-            self.prof[key] = round(v, 3) if key in ("gate", "gain") else int(v)
+            self.prof[key] = round(v, 3) if key in ("gate", "gain", "ems_threshold") else int(v)
+        self.prof["ems_enabled"] = bool(self.var_ems.get())
+        self.prof["ems_cont_enabled"] = bool(self.var_ems_cont.get())
         if self.prof["high_hz"] <= self.prof["low_hz"] + 10:
             self.prof["high_hz"] = self.prof["low_hz"] + 10
             self.vars["high_hz"].set(self.prof["high_hz"])
@@ -400,10 +476,22 @@ class App(ctk.CTk):
         if self.engine and old != (self.prof["low_hz"], self.prof["high_hz"]):
             self.engine.set_profile(self.prof)
 
+    def _ems_toggled(self, var):
+        if var.get() and not getattr(self, "_ems_warned", False):
+            if messagebox.askokcancel(self.T("ems_warn_title"), self.T("ems_warn"), icon="warning"):
+                self._ems_warned = True
+            else:
+                var.set(False)
+        self._sliders_changed()
+
     def _apply_profile_to_sliders(self):
         for key, *_ in SLIDERS:
             self.vars[key].set(self.prof[key])
+        for key, *_ in EMS_SLIDERS:
+            self.vars[key].set(self.prof.get(key, ah.PROFILES["balanced"][key]))
         self.var_cont.set(bool(self.prof.get("continuous", True)))
+        self.var_ems.set(bool(self.prof.get("ems_enabled", False)))
+        self.var_ems_cont.set(bool(self.prof.get("ems_cont_enabled", False)))
 
     def _select_profile(self):
         self.prof_name = self.cb_profile.get()
@@ -516,8 +604,9 @@ class App(ctk.CTk):
         self.tg = self.tg or ah.TrueGear()
         inten = int(self.prof["max_intensity"])
         self.tg.pulse(inten, inten, 120)
-        self.vest.show(inten, inten, False)
-        self.after(150, lambda: self.vest.show(0, 0, False))
+        allq = {"fl": inten, "fr": inten, "bl": inten, "br": inten}
+        self.vest.show(allq, False)
+        self.after(150, lambda: self.vest.show({}, False))
 
     # ------------------------------------------------------------ Hilfe
     def _show_help(self):
@@ -525,7 +614,7 @@ class App(ctk.CTk):
             self._help_win.lift(); return
         win = ctk.CTkToplevel(self)
         win.title(self.T("help") + " – Audio Haptics")
-        win.geometry("680x600")
+        win.geometry("680x640")
         win.configure(fg_color=BG)
         self._help_win = win
         ctk.CTkLabel(win, text=self.T("help_title"), font=(FONT, 20, "bold"),
@@ -550,16 +639,35 @@ class App(ctk.CTk):
                              justify="left", wraplength=560).pack(anchor="w", pady=(1, 0))
         win.after(100, win.lift)
 
+    def _test_ems(self):
+        # Leichter Testreiz, fest 20: erst Band 0 (links laut Annahme), 0,8 s später Band 100
+        self.tg = self.tg or ah.TrueGear()
+        self.tg.ems(0, left=20, right=0); self._ems_test_l = time.time()
+
+        def right():
+            self.tg.ems(0, left=0, right=20); self._ems_test_r = time.time()
+        self.after(800, right)
+
     # ------------------------------------------------------------ Anzeige
     def _tick(self):
         self.pb_bass.set(self.status["level"])
         self.pb_hap.set(self.status["inten"] / 100.0)
-        self.lbl_hit.configure(text=self.T("impulse") if time.time() < self.status["hit_until"] else " ")
+        txt = self.T("impulse") if time.time() < self.status["hit_until"] else " "
+        if self.engine and time.time() - self.engine.ems_fired < 0.4:
+            txt = (txt.strip() + "  ⚡ " + self.T("ems_fired")).strip()
+        self.lbl_hit.configure(text=txt)
+        now = time.time()
+        tl = getattr(self, "_ems_test_l", 0.0); tr = getattr(self, "_ems_test_r", 0.0)
+        gl = max(0.0, 1.0 - (now - tl) / 0.4); gr = max(0.0, 1.0 - (now - tr) / 0.4)
         if self.engine:
-            li, ri, core, t = self.engine.last_lr
+            f = max(0.0, 1.0 - (now - self.engine.ems_fired) / 0.4)
+            gl = max(gl, f * self.engine.ems_lr[0]); gr = max(gr, f * self.engine.ems_lr[1])
+        self.vest.show_ems(gl, gr)
+        if self.engine:
+            q, core, t = self.engine.last_q
             age = time.time() - t
             fade = max(0.0, 1.0 - age / 0.18)           # Glühen klingt in 180 ms ab
-            self.vest.show(li * fade, ri * fade, core)
+            self.vest.show(q, core, fade)
         if self.tg:
             ok = self.tg.ws is not None
             self.lbl_conn.configure(text=self.T("conn_ok") if ok else self.T("conn_lost"),

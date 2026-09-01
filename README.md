@@ -35,6 +35,7 @@ Windows SmartScreen may warn about an unknown publisher (the build is not code-s
 | Cooldown | Minimum gap between two impulses. |
 | Bass from / to | Frequency band that is analysed. |
 | Send rate | How often commands go to the vest. If the vest keeps vibrating after you stop audio, choose a slower rate. |
+| EMS arm cuffs (optional) | Off by default. "On hits": strong single hits trigger the cuffs (threshold, min. gap). "Continuous": cuffs follow the bass level. Own strength sliders (100 % = the EMS strength set in the TrueGear Player). Read the warning in the app before enabling. |
 
 Profiles **impact**, **cinematic** and **balanced** are included; your own profiles are stored in `%LOCALAPPDATA%\AudioHaptics\profiles.json`. The app and its built-in **Help** are available in English and German (switch top right).
 

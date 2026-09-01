@@ -1,7 +1,7 @@
 ; Inno Setup Skript – erzeugt AudioHaptics-Setup.exe
 ; Wird automatisch von build.bat aufgerufen, wenn Inno Setup installiert ist.
 #define AppName "Audio Haptics"
-#define AppVersion "0.1.0"
+#define AppVersion "0.2.0"
 #define AppExe "AudioHaptics.exe"
 
 [Setup]
